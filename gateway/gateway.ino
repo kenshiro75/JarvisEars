@@ -1,9 +1,6 @@
-/* RFM69 library and code by Felix Rusu - felix@lowpowerlab.com
-// Get libraries at: https://github.com/LowPowerLab/
-// Make sure you adjust the settings in the configuration section below !!!
-// **********************************************************************************
-// Copyright Felix Rusu, LowPowerLab.com
-// Library and code by Felix Rusu - felix@lowpowerlab.com
+/*
+// Copyright Ettore Cirillo
+// Library and code by Ettore Cirillo - kenshiro1@libero.it
 // **********************************************************************************
 // License
 // **********************************************************************************
@@ -34,35 +31,25 @@
 #define SERIAL_DEBUG  2
 
 #include <ESP8266WiFi.h>
-#include <RFM69.h>                //https://www.github.com/lowpowerlab/rfm69
 #include <pgmspace.h>
-
-char RadioConfig[128];
 
 // Default values
 const char PROGMEM ENCRYPTKEY[] = "sampleEncryptKey";
-const char PROGMEM MDNS_NAME[] = "rfm69gw1";
-const char PROGMEM MQTT_BROKER[] = "192.168.1.82";
-const char PROGMEM RFM69AP_NAME[] = "RFM69-AP";
-const char szApplication[] = "rfm69";
+const char PROGMEM MDNS_NAME[] = "gateway";
+const char PROGMEM MQTT_BROKER[] = "127.0.0.1";
+const char PROGMEM AP_NAME[] = "GATEWAY-AP";
+const char szApplication[] = "jarvis";
 const uint32_t PROGMEM MQTT_BROKERPORT = 1883;
 
 #define NETWORKID     202  //the same on all nodes that talk to each other
 #define NODEID        1
-
-//Match frequency to the hardware version of the radio
-//#define FREQUENCY     RF69_433MHZ
-#define  FREQUENCY    RF69_868MHZ
-//#define FREQUENCY      RF69_915MHZ
-#define IS_RFM69HCW    true // set to 'true' if you are using an RFM69HCW module
-#define POWER_LEVEL    31
 
 // vvvvvvvvv Global Configuration vvvvvvvvvvv
 #include <EEPROM.h>
 
 struct _GLOBAL_CONFIG {
   uint32_t    checksum;
-  char        rfmapname[32];
+  char        apname[32];
   char        mqttbroker[32];
   char        mqttclientname[32];
   char        mdnsname[32];
@@ -74,13 +61,8 @@ struct _GLOBAL_CONFIG {
   char        encryptkey[16+1];
   uint8_t     networkid;
   uint8_t     nodeid;
-  uint8_t     powerlevel; // bits 0..4 power leve, bit 7 RFM69HCW 1=true
-  uint8_t     rfmfrequency;
   uint32_t    mqttbrokerport;
 };
-
-#define GC_POWER_LEVEL    (pGC->powerlevel & 0x1F)
-#define GC_IS_RFM69HCW  ((pGC->powerlevel & 0x80) != 0)
 
 struct _GLOBAL_CONFIG *pGC;
 // ^^^^^^^^^ Global Configuration ^^^^^^^^^^^
@@ -111,7 +93,7 @@ void wifi_setup(void) {
   //if it does not connect it starts an access point with the specified name
   //here  "AutoConnectAP"
   //and goes into a blocking loop awaiting configuration
-  if(!wifiManager.autoConnect(pGC->rfmapname)) {
+  if(!wifiManager.autoConnect(pGC->apname)) {
     Serial.println("failed to connect and hit timeout");
     //reset and try again, or maybe put it to deep sleep
     ESP.reset();
@@ -142,15 +124,13 @@ void eeprom_setup() {
     Serial.println("Factory reset");
     memset(pGC, 0, sizeof(*pGC));
     strcpy_P(pGC->encryptkey, ENCRYPTKEY);
-    strcpy_P(pGC->rfmapname, RFM69AP_NAME);
+    strcpy_P(pGC->apname, AP_NAME);
     strcpy_P(pGC->mqttbroker, MQTT_BROKER);
     pGC->mqttbrokerport = MQTT_BROKERPORT;
     strcpy_P(pGC->mdnsname, MDNS_NAME);
     //strcpy(pGC->mqttclientname, WiFi.hostname().c_str());    
     pGC->networkid = NETWORKID;
     pGC->nodeid = NODEID;
-    pGC->powerlevel = ((IS_RFM69HCW)?0x80:0x00) | POWER_LEVEL;
-    pGC->rfmfrequency = FREQUENCY;
     pGC->checksum = gc_checksum();    
     EEPROM.commit();
     Serial.println("End Factory reset");
@@ -161,7 +141,7 @@ void eeprom_setup() {
 // vvvvvvvvv ESP8266 web sockets vvvvvvvvvvv
 #include <ESP8266mDNS.h>
 
-// URL: http://rfm69gw.local
+// URL: http://Jarvisgw.local
 MDNSResponder mdns;
 
 void mdns_setup(void) {
@@ -184,7 +164,7 @@ static const char PROGMEM INDEX_HTML[] = R"rawliteral(
 <html>
 <head>
 <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-<title>RFM69 Gateway</title>
+<title>Jarvis Gateway</title>
 <style>
 "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
 </style>
@@ -262,58 +242,16 @@ static const char PROGMEM CONFIGUREGW_HTML[] = R"rawliteral(
 <html>
 <head>
   <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-  <title>RFM69 Gateway Configuration</title>
+  <title>Jarvis Gateway Configuration</title>
   <style>
     "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
   </style>
 </head>
 <body>
-  <h2>RFM69 Gateway Configuration</h2>
-  <a href="/configGWrfm69"><button type="button">RFM69</button></a>
-  <p>
+  <h2>Jarvis Gateway Configuration</h2>
   <a href="/configGWmqtt"><button type="button">MQTT</button></a>
   <p>
   <a href="/"><button type="button">Home</button></a>
-</body>
-</html>
-)rawliteral";
-
-static const char PROGMEM CONFIGUREGWRFM69_HTML[] = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-  <title>RFM69 Gateway Configuration</title>
-  <style>
-    "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
-  </style>
-</head>
-<body>
-  <h3>RFM69 Gateway Configuration</h3>
-  <form method='POST' action='/configGWrfm69' enctype='multipart/form-data'>
-    <label>RFM69 Network ID</label>
-    <input type='number' name='networkid' value="%d" min="1" max="255" size="3"><br>
-    <label>RFM69 Node ID</label>
-    <input type='number' name='nodeid' value="%d" min="1" max="255" size="3"><br>
-    <label>RFM69 Encryption Key</label>
-    <input type='text' name='encryptkey' value="%s" size="16" maxlength="16"><br>
-    <label>RFM69 Power Level</label>
-    <input type='number' name='powerlevel' value="%d" min="0" max="31"size="2"><br>
-    <label>RFM69 Frequency</label>
-    <select name="rfmfrequency">
-    <option value="31" %s>315 MHz</option>
-    <option value="43" %s>433 MHz</option>
-    <option value="86" %s>868 MHz</option>
-    <option value="91" %s>915 MHz</option>
-    </select><br>
-    <label for=hcw>RFM69 HCW</label><br>
-    <input type='radio' name='rfm69hcw' id="hcw" value="1" %s> True<br>
-    <input type='radio' name='rfm69hcw' id="hcw" value="0" %s> False<br>
-    <label>RFM69 AP name</label>
-    <input type='text' name='rfmapname' value="%s" size="32" maxlength="32"><br>
-    <p><input type='submit' value='Save changes'>
-  </form>
-  <p><a href="/configGW"><button type="button">Cancel</button></a><a href="/configGWreset"><button type="button">Factory Reset</button></a>
 </body>
 </html>
 )rawliteral";
@@ -323,13 +261,13 @@ static const char PROGMEM CONFIGUREGWMQTT_HTML[] = R"rawliteral(
 <html>
 <head>
   <meta name = "viewport" content = "width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0">
-  <title>RFM69 Gateway MQTT Configuration</title>
+  <title>Jarvis Gateway MQTT Configuration</title>
   <style>
     "body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; }"
   </style>
 </head>
 <body>
-  <h3>RFM69 Gateway MQTT Configuration</h3>
+  <h3>Jarvis Gateway MQTT Configuration</h3>
   <form method='POST' action='/configGWmqtt' enctype='multipart/form-data'>
     <label>MQTT broker</label>
     <input type='text' name='mqttbroker' value="%s" size="32" maxlength="32"><br>
@@ -361,7 +299,7 @@ void webSocketEvent(uint8_t num, int type, uint8_t * payload, size_t length)
         IPAddress ip = webSocket.remoteIP(num);
         Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\r\n", num, ip[0], ip[1], ip[2], ip[3], payload);
         // Send the RFM69 radio configuration one time after connection
-        webSocket.sendTXT(num, RadioConfig, strlen(RadioConfig));
+        //webSocket.sendTXT(num, RadioConfig, strlen(RadioConfig));
       }
       break;
     case WStype_TEXT:
@@ -418,97 +356,6 @@ void handleconfiguregwreset()
   EEPROM.commit();
   ESP.reset();
   delay(1000);
-}
-
-#define SELECTED_FREQ(f)  ((pGC->rfmfrequency==f)?"selected":"")
-
-void handleconfiguregwrfm69()
-{
-  size_t formFinal_len = strlen_P(CONFIGUREGWRFM69_HTML) + sizeof(*pGC);
-  char *formFinal = (char *)malloc(formFinal_len);
-  if (formFinal == NULL) {
-    Serial.println("formFinal malloc failed");
-    return;
-  }
-  snprintf_P(formFinal, formFinal_len, CONFIGUREGWRFM69_HTML,
-      pGC->networkid, pGC->nodeid, pGC->encryptkey, GC_POWER_LEVEL,
-      SELECTED_FREQ(RF69_315MHZ), SELECTED_FREQ(RF69_433MHZ),
-      SELECTED_FREQ(RF69_868MHZ), SELECTED_FREQ(RF69_915MHZ),
-      (GC_IS_RFM69HCW)?"checked":"", (GC_IS_RFM69HCW)?"":"checked",
-      pGC->rfmapname
-      );
-  webServer.send(200, "text/html", formFinal);
-  free(formFinal);
-}
-
-void handleconfiguregwrfm69Write()
-{
-  bool commit_required = false;
-  String argi, argNamei;
-
-  for (uint8_t i=0; i<webServer.args(); i++) {
-    Serial.print(webServer.argName(i));
-    Serial.print('=');
-    Serial.println(webServer.arg(i));
-    argi = webServer.arg(i);
-    argNamei = webServer.argName(i);
-    if (argNamei == "networkid") {
-      uint8_t formnetworkid = argi.toInt();
-      if (formnetworkid != pGC->networkid) {
-        commit_required = true;
-        pGC->networkid = formnetworkid;
-      }
-    }
-    else if (argNamei == "nodeid") {
-      uint8_t formnodeid = argi.toInt();
-      if (formnodeid != pGC->nodeid) {
-        commit_required = true;
-        pGC->networkid = formnodeid;
-      }
-    }
-    else if (argNamei == "encryptkey") {
-      const char *enckey = argi.c_str();
-      if (strcmp(enckey, pGC->encryptkey) != 0) {
-        commit_required = true;
-        strcpy(pGC->encryptkey, enckey);
-      }
-    }
-    else if (argNamei == "rfmapname") {
-      const char *apname = argi.c_str();
-      if (strcmp(apname, pGC->rfmapname) != 0) {
-        commit_required = true;
-        strcpy(pGC->rfmapname, apname);
-      }
-    }
-    else if (argNamei == "powerlevel") {
-      uint8_t powlev = argi.toInt();
-      if (powlev != GC_POWER_LEVEL) {
-        commit_required = true;
-        pGC->powerlevel = (GC_IS_RFM69HCW << 7) | powlev;
-      }
-    }
-    else if (argNamei == "rfm69hcw") {
-      uint8_t hcw = argi.toInt();
-      if (hcw != GC_IS_RFM69HCW) {
-        commit_required = true;
-        pGC->powerlevel = (hcw << 7) | GC_POWER_LEVEL;
-      }
-    }
-    else if (argNamei == "rfmfrequency") {
-      uint8_t freq = argi.toInt();
-      if (freq != pGC->rfmfrequency) {
-        commit_required = true;
-        pGC->rfmfrequency = freq;
-      }
-    }
-  }
-  handleRoot();
-  if (commit_required) {
-    pGC->checksum = gc_checksum();
-    EEPROM.commit();
-    ESP.reset();
-    delay(1000);
-  }
 }
 
 void handleconfiguregwmqtt()
@@ -568,8 +415,6 @@ void handleconfiguregwmqttWrite()
 void websock_setup(void) {
   webServer.on("/", handleRoot);
   webServer.on("/configGW", HTTP_GET, handleconfiguregw);
-  webServer.on("/configGWrfm69", HTTP_GET, handleconfiguregwrfm69);
-  webServer.on("/configGWrfm69", HTTP_POST, handleconfiguregwrfm69Write);
   webServer.on("/configGWmqtt", HTTP_GET, handleconfiguregwmqtt);
   webServer.on("/configGWmqtt", HTTP_POST, handleconfiguregwmqttWrite);
   webServer.on("/configGWreset", HTTP_GET, handleconfiguregwreset);
@@ -585,7 +430,7 @@ void websock_setup(void) {
 ESP8266HTTPUpdateServer httpUpdater;
 
 void ota_setup() {
-  httpUpdater.setup(&webServer, "/updater", "admin", "rfm69gw");
+  httpUpdater.setup(&webServer, "/updater", "admin", "Jarvisgw");
 }
 
 // ^^^^^^^^^ ESP8266 Web OTA Updater ^^^^^^^^^^^
@@ -594,150 +439,11 @@ void ota_setup() {
 
 void updateClients(uint8_t senderId, int32_t rssi, const char *message);
 
-// vvvvvvvvv RFM69 vvvvvvvvvvv
-#include <RFM69.h>                //https://www.github.com/lowpowerlab/rfm69
 #include <SPI.h>
 
-#if defined(__AVR_ATmega168__) || defined(__AVR_ATmega328P__) || defined(__AVR_ATmega88) || defined(__AVR_ATmega8__) || defined(__AVR_ATmega88__)
-#define RFM69_CS      10
-#define RFM69_IRQ     2
-#define RFM69_IRQN    digitalPinToInterrupt(RFM69_IRQ)
-#define RFM69_RST     9
 #define LED           13  // onboard blinky
-#elif defined(__arm__)//Use pin 10 or any pin you want
-// Tested on Arduino Zero
-#define RFM69_CS      10
-#define RFM69_IRQ     5
-#define RFM69_IRQN    digitalPinToInterrupt(RFM69_IRQ)
-#define RFM69_RST     6
-#define LED           13  // onboard blinky
-#elif defined(ESP8266)
-// ESP8266
-//#define RFM69_CS      15  // GPIO15/HCS/D8
-#define RFM69_CS      16  // GPIO16/HCS/D8
-#define RFM69_IRQ     4   // GPIO04/D2
-#define RFM69_IRQN    digitalPinToInterrupt(RFM69_IRQ)
-#define RFM69_RST     2   // GPIO02/D4
-//#define LED           0   // GPIO00/D3, onboard blinky for Adafruit Huzzah
-#define LED           5
-#else
-#define RFM69_CS      10
-#define RFM69_IRQ     2
-#define RFM69_IRQN    digitalPinToInterrupt(RFM69_IRQ)
-#define RFM69_RST     9
-#define LED           13  // onboard blinky
-#endif
-
-RFM69 radio;
-
-void radio_setup(void) {
-  int freq;
-  static const char PROGMEM JSONtemplate[] =
-    R"({"msgType":"config","freq":%d,"rfm69hcw":%d,"netid":%d,"power":%d})";
-  char payload[128];
-
-  radio = RFM69(RFM69_CS, RFM69_IRQ, GC_IS_RFM69HCW, RFM69_IRQN);
-  // Hard Reset the RFM module
-  pinMode(RFM69_RST, OUTPUT);
-  digitalWrite(RFM69_RST, HIGH);
-  delay(100);
-  digitalWrite(RFM69_RST, LOW);
-  delay(100);
-
-  Serial.print("RFM69_CS: ");
-  Serial.println(RFM69_CS);
-  Serial.print("RFM69_IRQ: ");
-  Serial.println(RFM69_IRQ);
-  Serial.print("RFM69_IRQN: ");
-  Serial.println(RFM69_IRQN);
-
-  // Initialize radio
-  //radio.initialize(pGC->rfmfrequency, pGC->nodeid, pGC->networkid);
-  radio.initialize(pGC->rfmfrequency, pGC->nodeid, NETWORKID);
-  if (GC_IS_RFM69HCW) {
-    radio.setHighPower();    // Only for RFM69HCW & HW!
-  }
-  radio.setPowerLevel(GC_POWER_LEVEL); // power output ranges from 0 (5dBm) to 31 (20dBm)
-
-  if (pGC->encryptkey[0] != '\0') radio.encrypt(pGC->encryptkey);
-
-  pinMode(LED, OUTPUT);
-
-  Serial.print("\nListening at ");
-  //switch (pGC->rfmfrequency) {
-  switch (FREQUENCY) {
-    case RF69_433MHZ:
-      freq = 433;
-      break;
-    case RF69_868MHZ:
-      freq = 868;
-      break;
-    case RF69_915MHZ:
-      freq = 915;
-      break;
-    case RF69_315MHZ:
-      freq = 315;
-      break;
-    default:
-      freq = -1;
-      break;
-  }
-  Serial.print(freq); Serial.print(' ');
-  //Serial.print(pGC->rfmfrequency); 
-  Serial.println(" MHz");
-
-  size_t len = snprintf_P(RadioConfig, sizeof(RadioConfig), JSONtemplate,
-      freq, GC_IS_RFM69HCW, pGC->networkid, GC_POWER_LEVEL);
-  if (len >= sizeof(RadioConfig)) {
-    Serial.println("\n\n*** RFM69 config truncated ***\n");
-  }
-}
-
-void radio_loop(void) {
-  //check if something was received (could be an interrupt from the radio)
-  if (radio.receiveDone())
-  {
-    uint8_t senderId;
-    int16_t rssi;
-    //uint8_t data[RF69_MAX_DATA_LEN];
-    char data[RF69_MAX_DATA_LEN];
-    int16_t iLen=0;
-    
-    //check if sender wanted an ACK
-    if (radio.ACKRequested())
-    {   
-      radio.sendACK();
-    }
- 
-    //save packet because it may be overwritten       
-    senderId = radio.SENDERID;
-    rssi = radio.RSSI;   
-    iLen = strlen((char *)radio.DATA);  
-    data[0]=0; 
-    memcpy(data, (char *)radio.DATA, iLen);
-    data[iLen]=0;
-    radio.receiveDone(); //put radio in RX mode  
 
 
-
-    //data[0]=0;
-    //Serial.printf("[info] data received: %s - len: %d\r\n",(void *)radio.DATA,radio.DATALEN);
-    //memcpy(data, (void *)radio.DATA, radio.DATALEN);
-    //Serial.printf("[info] senderId: %d\r\n",senderId);
-    //iLen = strlen((char *)radio.DATA);
-    //Serial.printf("[info] data received: %s - len: %d\r\n",(void *)radio.DATA,iLen);
-    //memcpy(data, (void *)radio.DATA, iLen);
-    //data[radio.DATALEN]=0;
-    //data[iLen]=0;
-    //Serial.printf("[info] data copied  : %s\r\n",(char *) data);
-     
-    updateClients(senderId, rssi, (const char *)data);
-  } else {
-    radio.receiveDone(); //put radio in RX mode
-  }
-}
-
-// ^^^^^^^^^ RFM69 ^^^^^^^^^^^
 
 // vvvvvvvvv MQTT vvvvvvvvvvv
 // *** Be sure to modify PubSubClient.h ***
@@ -777,121 +483,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print(szPayload);
   Serial.println();
 
-  // TBD send message to RFM node
-//  if (radio.sendWithRetry()) {
-//  }
-
-	//
-	// SEND TO NODE
-	// 
-	// elaborate topic
-	// if topic is like APP/NETWORKID/NODEID/RX
-	// send payload to NODEID
-	if (topic!=NULL){
-				
-		char *p=topic;
-		
-		p+=strlen(topic)-2; // p must be "RX" or "TX"
-		Serial.print("[info] message type: ");
-		Serial.println(p);
-		
-		if (!stricmp(p,"RX")){ // send message to NODEID
-			
-			char szNodeId[10];			
-			char *pszNodeId=NULL;
-			char *pp=topic;
-			int  iRetries = 10; 		// max tries to send
-			int  iRetriesWait = 100;  	// try to send every 10ms
-			bool bAckReq = false;
-      char szAppTopic[255];
-      bool bNotify = false;
-      char szCID[10];
-      char *pszCID = NULL;
-
-      szAppTopic[0]=0;
-      //sprintf(szAppTopic,"%s/%d/",szApplication, pGC->networkid);
-      sprintf(szAppTopic,"%s/%d/",szApplication, NETWORKID);
-
-
-			szNodeId[0]=0;
-			pszNodeId=szNodeId;
-			
-      // retrieve TOPIC
-      pp+=strlen(szAppTopic);
-			while(*pp!='/'){
-				*pszNodeId=*pp;
-				pp++; 
-				pszNodeId++;
-			}
-			*pszNodeId=0;
-     
-			Serial.print("[info] found topic nodeid: ");
-			Serial.println(szNodeId);
-
-      // retrieve NOTIFY
-     if (strstr(szPayload,"\"notify\":1")){
-      Serial.println("[info] notify: active ");
-      bNotify=true;
-     }
-     else {
-      Serial.println("[info] notify: NOT active ");
-     }
-
-     // retrieve CID
-      szCID[0]=0;
-      pszCID=szCID;
-      pp=strstr(szPayload,"\"cid\":");
-      pp+=strlen("\"cid\":");
-      while(*pp!=','){
-        *pszCID=*pp;
-        pp++; 
-        pszCID++;
-      }
-      *pszCID=0;     
-
-			// TODO -> sarebbe bello fare statistiche di trasmissione e autotarare i tentativi... bo?
-			if (radio.sendWithRetry(atoi(szNodeId),szPayload,iPayloadLength,iRetries,iRetriesWait)) {
-      
-				Serial.print("[info] sent payload: ");
-				Serial.print((char *) szPayload);
-				Serial.print(" to nodeid: ");
-				Serial.print(szNodeId);
-				Serial.println();
-       if (bNotify){
-        char sz[100];
-        sz[0]=0;
-        sprintf(sz,"{\"s\":\"N\",\"cid\":%s,\"sent\":\"OK\"}",szCID);
-        updateClients(atoi(szNodeId), 0, sz);
-       }
-			}
-			else {
-				Serial.print("[error] cannot send payload: ");
-				Serial.print((char *) szPayload);
-				Serial.print(" to nodeid: ");
-				Serial.println(szNodeId);
-
-       if (bNotify){
-        char sz[100];
-        sz[0]=0;
-        sprintf(sz,"{\"s\":\"N\",\"cid\":%s,\"sent\":\"KO\"}",szCID);
-        updateClients(atoi(szNodeId), 0, sz);
-       }      
-             		
-			}
-			
-		}
-		else if (!stricmp(p,"TX")){ // gestione invio mex all' app server
-			
-		}
-		else {
-			Serial.println("[error] message destination type (RX or TX) not found");
-		}
-		
-	}
-	else {
-		Serial.println("[error] topic not found");
-	}
-  
 	
 }
 
@@ -1070,7 +661,7 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message)
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-  Serial.println("\nRFM69 WiFi Gateway");
+  Serial.println("\Jarvis WiFi Gateway");
 
   Serial.println(ESP.getResetReason());
 
@@ -1085,13 +676,11 @@ void setup() {
   mqtt_setup();
   ota_setup();
   websock_setup();
-  radio_setup();
   
 }
 
 void loop() {
   
-  radio_loop();
   mqtt_loop();
   webSocket.loop();
   webServer.handleClient();
