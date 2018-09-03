@@ -1,34 +1,39 @@
 /*
 // Copyright Ettore Cirillo
 // Library and code by Ettore Cirillo - kenshiro1@libero.it
-// **********************************************************************************
+//
+**********************************************************************************
 // License
-// **********************************************************************************
-// This program is free software; you can redistribute it 
-// and/or modify it under the terms of the GNU General    
-// Public License as published by the Free Software       
-// Foundation; either version 3 of the License, or        
-// (at your option) any later version.                    
-//                                                        
-// This program is distributed in the hope that it will   
-// be useful, but WITHOUT ANY WARRANTY; without even the  
-// implied warranty of MERCHANTABILITY or FITNESS FOR A   
-// PARTICULAR PURPOSE. See the GNU General Public        
-// License for more details.                              
-//                                                        
-// You should have received a copy of the GNU General    
+//
+**********************************************************************************
+// This program is free software; you can redistribute it
+// and/or modify it under the terms of the GNU General
+// Public License as published by the Free Software
+// Foundation; either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will
+// be useful, but WITHOUT ANY WARRANTY; without even the
+// implied warranty of MERCHANTABILITY or FITNESS FOR A
+// PARTICULAR PURPOSE. See the GNU General Public
+// License for more details.
+//
+// You should have received a copy of the GNU General
 // Public License along with this program.
 // If not, see <http://www.gnu.org/licenses></http:>.
-//                                                        
-// Licence can be viewed at                               
+//
+// Licence can be viewed at
 // http://www.gnu.org/licenses/gpl-3.0.txt
 //
 // Please maintain this license information along with authorship
 // and copyright notices in any redistribution of this code
-// **********************************************************************************/
+//
+**********************************************************************************/
 
-#define SERIAL_BAUD   115200
-#define SERIAL_DEBUG  2
+#include <VS1053.h>
+
+#define SERIAL_BAUD 115200
+#define SERIAL_DEBUG 2
 
 #include <ESP8266WiFi.h>
 #include <pgmspace.h>
@@ -41,27 +46,27 @@ const char PROGMEM AP_NAME[] = "GATEWAY-AP";
 const char szApplication[] = "jarvis";
 const uint32_t PROGMEM MQTT_BROKERPORT = 1883;
 
-#define NETWORKID     202  //the same on all nodes that talk to each other
-#define NODEID        1
+#define NETWORKID 202 // the same on all nodes that talk to each other
+#define NODEID 1
 
 // vvvvvvvvv Global Configuration vvvvvvvvvvv
 #include <EEPROM.h>
 
 struct _GLOBAL_CONFIG {
-  uint32_t    checksum;
-  char        apname[32];
-  char        mqttbroker[32];
-  char        mqttclientname[32];
-  char        mdnsname[32];
-  uint32_t    ipaddress;  // if 0, use DHCP
-  uint32_t    ipnetmask;
-  uint32_t    ipgateway;
-  uint32_t    ipdns1;
-  uint32_t    ipdns2;
-  char        encryptkey[16+1];
-  uint8_t     networkid;
-  uint8_t     nodeid;
-  uint32_t    mqttbrokerport;
+  uint32_t checksum;
+  char apname[32];
+  char mqttbroker[32];
+  char mqttclientname[32];
+  char mdnsname[32];
+  uint32_t ipaddress; // if 0, use DHCP
+  uint32_t ipnetmask;
+  uint32_t ipgateway;
+  uint32_t ipdns1;
+  uint32_t ipdns2;
+  char encryptkey[16 + 1];
+  uint8_t networkid;
+  uint8_t nodeid;
+  uint32_t mqttbrokerport;
 };
 
 struct _GLOBAL_CONFIG *pGC;
@@ -70,32 +75,34 @@ struct _GLOBAL_CONFIG *pGC;
 // vvvvvvvvv ESP8266 WiFi vvvvvvvvvvv
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
-#include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+#include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
 
-void configModeCallback (WiFiManager *myWiFiManager) {
+void configModeCallback(WiFiManager *myWiFiManager) {
   Serial.println("Entered config mode");
   Serial.println(WiFi.softAPIP());
-  //if you used auto generated SSID, print it
+  // if you used auto generated SSID, print it
   Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
 void wifi_setup(void) {
-  //WiFiManager
-  //Local intialization. Once its business is done, there is no need to keep it around
+  // WiFiManager
+  // Local intialization. Once its business is done, there is no need to keep it
+  // around
   WiFiManager wifiManager;
-  //reset settings - for testing. Wipes out SSID/password.
-  //wifiManager.resetSettings();
+  // reset settings - for testing. Wipes out SSID/password.
+  // wifiManager.resetSettings();
 
-  //set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
+  // set callback that gets called when connecting to previous WiFi fails, and
+  // enters Access Point mode
   wifiManager.setAPCallback(configModeCallback);
 
-  //fetches ssid and pass and tries to connect
-  //if it does not connect it starts an access point with the specified name
-  //here  "AutoConnectAP"
-  //and goes into a blocking loop awaiting configuration
-  if(!wifiManager.autoConnect(pGC->apname)) {
+  // fetches ssid and pass and tries to connect
+  // if it does not connect it starts an access point with the specified name
+  // here  "AutoConnectAP"
+  // and goes into a blocking loop awaiting configuration
+  if (!wifiManager.autoConnect(pGC->apname)) {
     Serial.println("failed to connect and hit timeout");
-    //reset and try again, or maybe put it to deep sleep
+    // reset and try again, or maybe put it to deep sleep
     ESP.reset();
     delay(1000);
   }
@@ -128,10 +135,10 @@ void eeprom_setup() {
     strcpy_P(pGC->mqttbroker, MQTT_BROKER);
     pGC->mqttbrokerport = MQTT_BROKERPORT;
     strcpy_P(pGC->mdnsname, MDNS_NAME);
-    //strcpy(pGC->mqttclientname, WiFi.hostname().c_str());    
+    // strcpy(pGC->mqttclientname, WiFi.hostname().c_str());
     pGC->networkid = NETWORKID;
     pGC->nodeid = NODEID;
-    pGC->checksum = gc_checksum();    
+    pGC->checksum = gc_checksum();
     EEPROM.commit();
     Serial.println("End Factory reset");
   }
@@ -145,14 +152,14 @@ void eeprom_setup() {
 MDNSResponder mdns;
 
 void mdns_setup(void) {
-  if (pGC->mdnsname[0] == '\0') return;
+  if (pGC->mdnsname[0] == '\0')
+    return;
 
   if (mdns.begin(pGC->mdnsname, WiFi.localIP())) {
     Serial.println("MDNS responder started");
     mdns.addService("http", "tcp", 80);
     mdns.addService("ws", "tcp", 81);
-  }
-  else {
+  } else {
     Serial.println("MDNS.begin failed");
   }
   Serial.printf("Connect to http://%s.local or http://", pGC->mdnsname);
@@ -282,100 +289,93 @@ static const char PROGMEM CONFIGUREGWMQTT_HTML[] = R"rawliteral(
 </html>
 )rawliteral";
 
-#include <WebSocketsServer.h>     //https://github.com/Links2004/arduinoWebSockets
 #include <Hash.h>
+#include <WebSocketsServer.h> //https://github.com/Links2004/arduinoWebSockets
 ESP8266WebServer webServer(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
 
-void webSocketEvent(uint8_t num, int type, uint8_t * payload, size_t length)
-{
+void webSocketEvent(uint8_t num, int type, uint8_t *payload, size_t length) {
   Serial.printf("webSocketEvent(%d, %d, ...)\r\n", num, type);
-  switch(type) {
-    case WStype_DISCONNECTED:
-      Serial.printf("[%u] Disconnected!\r\n", num);
-      break;
-    case WStype_CONNECTED:
-      {
-        IPAddress ip = webSocket.remoteIP(num);
-        Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\r\n", num, ip[0], ip[1], ip[2], ip[3], payload);
-        // Send the RFM69 radio configuration one time after connection
-        //webSocket.sendTXT(num, RadioConfig, strlen(RadioConfig));
-      }
-      break;
-    case WStype_TEXT:
-      Serial.printf("[%u] get Text: %s\r\n", num, payload);
+  switch (type) {
+  case WStype_DISCONNECTED:
+    Serial.printf("[%u] Disconnected!\r\n", num);
+    break;
+  case WStype_CONNECTED: {
+    IPAddress ip = webSocket.remoteIP(num);
+    Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\r\n", num, ip[0],
+                  ip[1], ip[2], ip[3], payload);
+    // Send the RFM69 radio configuration one time after connection
+    // webSocket.sendTXT(num, RadioConfig, strlen(RadioConfig));
+  } break;
+  case WStype_TEXT:
+    Serial.printf("[%u] get Text: %s\r\n", num, payload);
 
-      // send data to all connected clients
-      //webSocket.broadcastTXT(payload, length);
-      break;
-    case WStype_BIN:
-      Serial.printf("[%u] get binary length: %u\r\n", num, length);
-      //hexdump(payload, length);
+    // send data to all connected clients
+    // webSocket.broadcastTXT(payload, length);
+    break;
+  case WStype_BIN:
+    Serial.printf("[%u] get binary length: %u\r\n", num, length);
+    // hexdump(payload, length);
 
-      // echo data back to browser
-      //webSocket.sendBIN(num, payload, length);
-      break;
-    default:
-      Serial.printf("Invalid WStype [%d]\r\n", type);
-      break;
+    // echo data back to browser
+    // webSocket.sendBIN(num, payload, length);
+    break;
+  default:
+    Serial.printf("Invalid WStype [%d]\r\n", type);
+    break;
   }
 }
 
-void handleRoot()
-{
-  Serial.print("Free heap="); Serial.println(ESP.getFreeHeap());
+void handleRoot() {
+  Serial.print("Free heap=");
+  Serial.println(ESP.getFreeHeap());
 
   webServer.send_P(200, "text/html", INDEX_HTML);
 }
 
-void handleNotFound()
-{
+void handleNotFound() {
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += webServer.uri();
   message += "\nMethod: ";
-  message += (webServer.method() == HTTP_GET)?"GET":"POST";
+  message += (webServer.method() == HTTP_GET) ? "GET" : "POST";
   message += "\nArguments: ";
   message += webServer.args();
   message += "\n";
-  for (uint8_t i=0; i<webServer.args(); i++){
+  for (uint8_t i = 0; i < webServer.args(); i++) {
     message += " " + webServer.argName(i) + ": " + webServer.arg(i) + "\n";
   }
   webServer.send(404, "text/plain", message);
 }
 
-void handleconfiguregw()
-{
+void handleconfiguregw() {
   webServer.send_P(200, "text/html", CONFIGUREGW_HTML);
 }
 
 // Reset global config back to factory defaults
-void handleconfiguregwreset()
-{
+void handleconfiguregwreset() {
   pGC->checksum++;
   EEPROM.commit();
   ESP.reset();
   delay(1000);
 }
 
-void handleconfiguregwmqtt()
-{
+void handleconfiguregwmqtt() {
   size_t formFinal_len = strlen_P(CONFIGUREGWMQTT_HTML) + sizeof(*pGC);
   char *formFinal = (char *)malloc(formFinal_len);
-  if (formFinal == NULL) {}
-  snprintf_P(formFinal, formFinal_len, CONFIGUREGWMQTT_HTML,
-      pGC->mqttbroker, pGC->mqttclientname, pGC->mdnsname
-      );
+  if (formFinal == NULL) {
+  }
+  snprintf_P(formFinal, formFinal_len, CONFIGUREGWMQTT_HTML, pGC->mqttbroker,
+             pGC->mqttclientname, pGC->mdnsname);
   webServer.send(200, "text/html", formFinal);
   free(formFinal);
 }
 
-void handleconfiguregwmqttWrite()
-{
+void handleconfiguregwmqttWrite() {
   bool commit_required = false;
   String argi, argNamei;
 
-  for (uint8_t i=0; i<webServer.args(); i++) {
+  for (uint8_t i = 0; i < webServer.args(); i++) {
     Serial.print(webServer.argName(i));
     Serial.print('=');
     Serial.println(webServer.arg(i));
@@ -387,15 +387,13 @@ void handleconfiguregwmqttWrite()
         commit_required = true;
         strcpy(pGC->mqttbroker, broker);
       }
-    }
-    else if (argNamei == "mqttclientname") {
+    } else if (argNamei == "mqttclientname") {
       const char *client = argi.c_str();
       if (strcmp(client, pGC->mqttclientname) != 0) {
         commit_required = true;
         strcpy(pGC->mqttclientname, client);
       }
-    }
-    else if (argNamei == "mdnsname") {
+    } else if (argNamei == "mdnsname") {
       const char *mdns = argi.c_str();
       if (strcmp(mdns, pGC->mdnsname) != 0) {
         commit_required = true;
@@ -441,9 +439,7 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message);
 
 #include <SPI.h>
 
-#define LED           13  // onboard blinky
-
-
+#define LED 13 // onboard blinky
 
 // vvvvvvvvv MQTT vvvvvvvvvvv
 // *** Be sure to modify PubSubClient.h ***
@@ -459,47 +455,44 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message);
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
-void callback(char* topic, byte* payload, unsigned int length) {
+void callback(char *topic, byte *payload, unsigned int length) {
 
-  char *p=NULL;
+  char *p = NULL;
   char szPayload[255];
   int iPayloadLength = 0;
-  
-  szPayload[0]=0;
-  p=szPayload;
-  
+
+  szPayload[0] = 0;
+  p = szPayload;
+
   Serial.print("[info][");
   Serial.print(topic);
   Serial.print("] ");
-  for (unsigned int i = 0; i < length; i++,p++) {    
-    *p=(char)payload[i];
+  for (unsigned int i = 0; i < length; i++, p++) {
+    *p = (char)payload[i];
   }
-  *p=0;
-  
+  *p = 0;
 
-  //strcpy(szPayload,(char *)payload);
+  // strcpy(szPayload,(char *)payload);
   iPayloadLength = strlen(szPayload);
 
   Serial.print(szPayload);
   Serial.println();
-
-	
 }
 
 void mqtt_setup() {
-  
-  Serial.print("MQTT broker IP: ");  
+
+  Serial.print("MQTT broker IP: ");
   Serial.print(pGC->mqttbroker);
   Serial.print(" - port: ");
-  Serial.println(pGC->mqttbrokerport);  
-  
+  Serial.println(pGC->mqttbrokerport);
+
   mqttClient.setServer(pGC->mqttbroker, pGC->mqttbrokerport);
-  //mqttClient.setServer(MQTT_BROKER, MQTT_BROKERPORT);
+  // mqttClient.setServer(MQTT_BROKER, MQTT_BROKERPORT);
   mqttClient.setCallback(callback);
 }
 
 void reconnect() {
-  //static const char PROGMEM RFMOUT_TOPIC[] = "rfmOut/%d/#";
+  // static const char PROGMEM RFMOUT_TOPIC[] = "rfmOut/%d/#";
   static const char PROGMEM RFMOUT_TOPIC[] = "%s/%d/#";
   char sub_topic[32];
 
@@ -510,32 +503,32 @@ void reconnect() {
     if (mqttClient.connect(WiFi.hostname().c_str())) {
 
       char szGatewayTopic[32];
-      szGatewayTopic[0]=0;
-/*      
+      szGatewayTopic[0] = 0;
+      /*
       char szGatewayTopic[32];
       char szGatewayTopicWelcomeMex[100];
       szGatewayTopic[0]=0;
       szGatewayTopicWelcomeMex[0]=0;
-*/     
+*/
       Serial.println("connected");
       // Once connected, publish an announcement...
-      //mqttClient.publish("rfmIn", "Connect");
+      // mqttClient.publish("rfmIn", "Connect");
       // ... and resubscribe
-      //snprintf_P(sub_topic, sizeof(sub_topic), RFMOUT_TOPIC, pGC->networkid);
-      //snprintf_P(sub_topic, sizeof(sub_topic), RFMOUT_TOPIC, szApplication, pGC->networkid);
-      
-      sprintf(szGatewayTopic,"%s/%d/#", szApplication, NETWORKID);
+      // snprintf_P(sub_topic, sizeof(sub_topic), RFMOUT_TOPIC, pGC->networkid);
+      // snprintf_P(sub_topic, sizeof(sub_topic), RFMOUT_TOPIC, szApplication,
+      // pGC->networkid);
+
+      sprintf(szGatewayTopic, "%s/%d/#", szApplication, NETWORKID);
       mqttClient.subscribe(szGatewayTopic);
       Serial.printf("subscribe topic [%s]\r\n", szGatewayTopic);
- 
-/*      
+
+      /*
       sprintf(szGatewayTopic,"%s/%d/#", szApplication, NETWORKID);
       mqttClient.subscribe(szGatewayTopic);
       sprintf(szGatewayTopicWelcomeMex,"waiting on topic: %s",szGatewayTopic);
       mqttClient.publish(szGatewayTopic, szGatewayTopicWelcomeMex);
       Serial.printf("subscribe topic [%s]\r\n", szGatewayTopic);
-*/      
-      
+*/
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqttClient.state());
@@ -563,10 +556,9 @@ struct _nodestats {
 };
 
 typedef struct _nodestats nodestats_t;
-nodestats_t *nodestats[256];  // index by node ID
+nodestats_t *nodestats[256]; // index by node ID
 
-struct _nodestats *get_nodestats(uint8_t nodeID)
-{
+struct _nodestats *get_nodestats(uint8_t nodeID) {
   if (nodestats[nodeID] == NULL) {
     nodestats[nodeID] = (nodestats_t *)malloc(sizeof(nodestats_t));
     if (nodestats[nodeID] == NULL) {
@@ -578,8 +570,7 @@ struct _nodestats *get_nodestats(uint8_t nodeID)
   return nodestats[nodeID];
 }
 
-void updateClients(uint8_t senderId, int32_t rssi, const char *message)
-{
+void updateClients(uint8_t senderId, int32_t rssi, const char *message) {
   nodestats_t *ns;
   ns = get_nodestats(senderId);
   if (ns == NULL) {
@@ -588,13 +579,13 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message)
   }
   unsigned long sequenceChange, newMessageSequence;
   static const char PROGMEM JSONtemplate[] =
-    R"({"msgType":"status","rxMsgCnt":%lu,"rxMsgMiss":%lu,"rxMsgDup":%lu,"senderId":%d,"rssi":%d,"message":%s})";
+      R"({"msgType":"status","rxMsgCnt":%lu,"rxMsgMiss":%lu,"rxMsgDup":%lu,"senderId":%d,"rssi":%d,"message":%s})";
   char payload[255], topic[32];
 
   Serial.printf("[info] node:%d - msg:%s \r\n", senderId, message);
   newMessageSequence = strtoul(message, NULL, 10);
   ns->recvMessageCount++;
-  //Serial.printf("nms %lu rmc %lu rms %lu\r\n",
+  // Serial.printf("nms %lu rmc %lu rms %lu\r\n",
   //    newMessageSequence, ns->recvMessageCount, ns->recvMessageSequence);
   if (ns->recvMessageCount != 1) {
     // newMessageSequence == 0 means the sender just start up.
@@ -603,13 +594,12 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message)
     if (newMessageSequence != 0) {
       if (newMessageSequence == ns->recvMessageSequence) {
         ns->recvMessageDuplicate++;
-      }
-      else {
+      } else {
         if (newMessageSequence > ns->recvMessageSequence) {
           sequenceChange = newMessageSequence - ns->recvMessageSequence;
-        }
-        else {
-          sequenceChange = 0xFFFFFFFFUL - (ns->recvMessageSequence - newMessageSequence);
+        } else {
+          sequenceChange =
+              0xFFFFFFFFUL - (ns->recvMessageSequence - newMessageSequence);
         }
         if (sequenceChange > 1) {
           ns->recvMessageMissing += sequenceChange - 1;
@@ -618,7 +608,7 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message)
     }
   }
   ns->recvMessageSequence = newMessageSequence;
-  //Serial.printf("nms %lu rmc %lu rms %lu\r\n",
+  // Serial.printf("nms %lu rmc %lu rms %lu\r\n",
   //    newMessageSequence, ns->recvMessageCount, ns->recvMessageSequence);
 
   // Send using JSON format (http://www.json.org/)
@@ -632,24 +622,25 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message)
   //   "message": "Hello World #1234"
   // }
   size_t len = snprintf_P(payload, sizeof(payload), JSONtemplate,
-      ns->recvMessageCount, ns->recvMessageMissing,
-      ns->recvMessageDuplicate, senderId, rssi, message);
+                          ns->recvMessageCount, ns->recvMessageMissing,
+                          ns->recvMessageDuplicate, senderId, rssi, message);
   if (len >= sizeof(payload)) {
     Serial.println("\n\n*** RFM69 packet truncated ***");
   }
-  if (len<0){
+  if (len < 0) {
     Serial.println("[error] problem in parsing RFM69 message");
   }
   // send received message to all connected web clients
   webSocket.broadcastTXT(payload, strlen(payload));
 
   // mqtt publish the same message
-  //len = snprintf(topic, sizeof(topic), "rfmIn/%d/%d", NETWORKID, senderId);
-  len = snprintf(topic, sizeof(topic), "%s/%d/%d/tx", szApplication, NETWORKID, senderId);
+  // len = snprintf(topic, sizeof(topic), "rfmIn/%d/%d", NETWORKID, senderId);
+  len = snprintf(topic, sizeof(topic), "%s/%d/%d/tx", szApplication, NETWORKID,
+                 senderId);
   if (len >= sizeof(topic)) {
     Serial.println("\n\n*** MQTT topic truncated ***");
   }
-  if ((strlen(payload)+1+strlen(topic)+1) > MQTT_MAX_PACKET_SIZE) {
+  if ((strlen(payload) + 1 + strlen(topic) + 1) > MQTT_MAX_PACKET_SIZE) {
     Serial.println("\n\n*** MQTT message too long! ***");
   }
   Serial.printf("[info] topic:%s - message:%s \r\n", topic, payload);
@@ -657,7 +648,6 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message)
     Serial.println("\n\n*** mqtt publish failed ***");
   }
 }
-
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
@@ -676,14 +666,11 @@ void setup() {
   mqtt_setup();
   ota_setup();
   websock_setup();
-  
 }
 
 void loop() {
-  
+
   mqtt_loop();
   webSocket.loop();
   webServer.handleClient();
-  
 }
-
