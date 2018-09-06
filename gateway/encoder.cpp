@@ -51,8 +51,9 @@
 #include <stdio.h>
 #include <string.h>
 
-extern "C"
-{
+#include "encoder.h"
+
+extern "C" {
 #include "user_interface.h"
 }
 
@@ -71,23 +72,18 @@ extern "C"
 //******************************************************************************************
 // Global data section. *
 //******************************************************************************************
-enum datamode_t
-{
-  INIT,
-  HEADER,
-  DATA,
-  METADATA
-}; // State for datastream
+enum datamode_t { INIT, HEADER, DATA, METADATA }; // State for datastream
 // Global variables
-String ssid;              // SSID of selected WiFi network
-int DEBUG = 1;            // Debug on or off
-WiFiServer server(8080);  // Ogg stream server object
-WiFiClient serverClient;  // Just one listener
+// String ssid;              // SSID of selected WiFi network
+int DEBUG = 1; // Debug on or off
+// WiFiServer server(8080);  // Ogg stream server object
+// WiFiClient serverClient;  // Just one listener
 Ticker tckr;              // For timing 10 sec
 char sbuf[400];           // For debug lines
 int gconv = 0;            // Total converted
 uint8_t dbuffer[BUFFSIZ]; // Buffer with Ogg data
 //
+
 const char *oggheader = "ICY 200 OK\r\n"
                         "Content-Type: audio/ogg\r\n"
                         "icy-name:Ogg-encoder by Ed Smallenburg\r\n"
@@ -103,112 +99,6 @@ char *dbgprint(const char *format, ...); // Forward declaration
 //******************************************************************************************
 // VS1053Ogg stuff.  Based on maniacbug library. *
 //******************************************************************************************
-// VS1053Ogg class definition. *
-//******************************************************************************************
-class VS1053Ogg
-{
-private:
-  uint8_t cs_pin;    // Pin where CS line is connected
-  uint8_t dcs_pin;   // Pin where DCS line is connected
-  uint8_t dreq_pin;  // Pin where DREQ line is connected
-  uint8_t reset_pin; // Pin where RESET line is connected
-  // SCI Register
-  const uint8_t SCI_MODE = 0x0;
-  const uint8_t SCI_BASS = 0x2;
-  const uint8_t SCI_CLOCKF = 0x3;
-  const uint8_t SCI_AUDATA = 0x5;
-  const uint8_t SCI_WRAM = 0x6;
-  const uint8_t SCI_WRAMADDR = 0x7;
-  const uint8_t SCI_HDAT0 = 0x8;
-  const uint8_t SCI_HDAT1 = 0x9;
-  const uint8_t SCI_AIADDR = 0xA;
-  const uint8_t SCI_VOL = 0xB;
-  const uint8_t SCI_AICTRL0 = 0xC;
-  const uint8_t SCI_AICTRL1 = 0xD;
-  const uint8_t SCI_AICTRL2 = 0xE;
-  const uint8_t SCI_AICTRL3 = 0xF;
-  const uint8_t SCI_num_registers = 0xF;
-  // SCI_MODE bits
-  const uint8_t SM_RESET = 2;   // Bitnumber in SCI_MODE soft reset
-  const uint8_t SM_CANCEL = 3;  // Bitnumber in SCI_MODE cancel song
-  const uint8_t SM_TESTS = 5;   // Bitnumber in SCI_MODE for tests
-  const uint8_t SM_SDINEW = 11; // Bitnumber in SCI_MODE always on
-  const uint8_t SM_ADPCM = 12;  // Bitnumber in SCI_MODE for recording
-  const uint8_t SM_LINE1 = 14;  // Bitnumber in SCI_MODE for Line input
-  SPISettings VS1053_SPI;       // SPI settings for this slave
-  uint16_t plg_sa;              // Result load image, startaddress plugin (0x34)
-  bool activeflag = false;      // Active or not
-protected:
-  inline void await_data_request() const
-  {
-    delayMicroseconds(10);
-    while (!digitalRead(dreq_pin))
-    {
-      yield(); // Very short delay
-    }
-  }
-
-  inline void control_mode_on() const
-  {
-    SPI.beginTransaction(VS1053_SPI); // Prevent other SPI users
-    digitalWrite(dcs_pin, HIGH);      // Bring slave in control mode
-    digitalWrite(cs_pin, LOW);
-  }
-
-  inline void control_mode_off() const
-  {
-    digitalWrite(cs_pin, HIGH); // End control mode
-    SPI.endTransaction();       // Allow other SPI users
-  }
-
-  inline void data_mode_on() const
-  {
-    SPI.beginTransaction(VS1053_SPI); // Prevent other SPI users
-    digitalWrite(cs_pin, HIGH);       // Bring slave in data mode
-    digitalWrite(dcs_pin, LOW);
-  }
-
-  inline void data_mode_off() const
-  {
-    digitalWrite(dcs_pin, HIGH); // End data mode
-    SPI.endTransaction();        // Allow other SPI users
-  }
-
-  uint16_t read_register(uint8_t _reg);
-  void write_register(uint8_t _reg, uint16_t _value);
-  bool write_register(uint8_t _reg, uint16_t _value, uint16_t timeout);
-  void wram_write(uint16_t address, uint16_t data);
-  uint16_t wram_read(uint16_t address);
-  uint16_t SpiLoadImage(String imgfile);
-  void LoadUserCode(String cmdfile);
-
-public:
-  // Constructor.  Only sets pin values.  Doesn't touch the chip.  Be sure to
-  // call begin()!
-  VS1053Ogg(uint8_t _cs_pin, uint8_t _dcs_pin, uint8_t _dreq_pin,
-            uint8_t _reset_pin);
-  void begin();    // Begin operation.  Sets pins correctly,
-                   // and prepares SPI bus.
-  void activate(); // Activate conversion
-  bool active();   // Return active state
-  void printDetails(
-      const char *header);           // Print configuration details to serial output.
-  void softReset();                  // Do a soft reset
-  bool testComm(const char *header); // Test communication with module
-  int getRecordingTime();            // Read recording time
-
-  inline bool data_request() const { return (digitalRead(dreq_pin) == HIGH); }
-
-  inline uint16_t available() // Return number of bytes in VS1053 fifo
-  {
-    return read_register(SCI_HDAT1);
-  }
-
-  inline uint16_t read() // Get next word from VS1053 fifo
-  {
-    return read_register(SCI_HDAT0);
-  }
-};
 
 //******************************************************************************************
 // VS1053Ogg class implementation. *
@@ -219,8 +109,7 @@ VS1053Ogg::VS1053Ogg(uint8_t _cs_pin, uint8_t _dcs_pin, uint8_t _dreq_pin,
     : cs_pin(_cs_pin), dcs_pin(_dcs_pin), dreq_pin(_dreq_pin),
       reset_pin(_reset_pin) {}
 
-uint16_t VS1053Ogg::read_register(uint8_t _reg)
-{
+uint16_t VS1053Ogg::read_register(uint8_t _reg) {
   uint16_t result;
 
   await_data_request(); // Wait for DREQ to be HIGH again
@@ -234,8 +123,7 @@ uint16_t VS1053Ogg::read_register(uint8_t _reg)
   return result;
 }
 
-void VS1053Ogg::write_register(uint8_t _reg, uint16_t _value)
-{
+void VS1053Ogg::write_register(uint8_t _reg, uint16_t _value) {
   await_data_request();
   control_mode_on();
   SPI.write(2);        // Write operation
@@ -245,11 +133,9 @@ void VS1053Ogg::write_register(uint8_t _reg, uint16_t _value)
 }
 
 bool VS1053Ogg::write_register(uint8_t _reg, uint16_t _value,
-                               uint16_t timeout)
-{
+                               uint16_t timeout) {
   // Same function, but with time-out
-  while (!digitalRead(dreq_pin) && --timeout)
-  {
+  while (!digitalRead(dreq_pin) && --timeout) {
     delay(1); // Short delay
   }
   control_mode_on();
@@ -257,8 +143,7 @@ bool VS1053Ogg::write_register(uint8_t _reg, uint16_t _value,
   SPI.write(_reg);     // Register to write (0..0xF)
   SPI.write16(_value); // Send 16 bits data
   control_mode_off();
-  if (timeout == 0)
-  {
+  if (timeout == 0) {
     dbgprint("VS1053 time-out writing register %04X with value %04X", _reg,
              _value);
     return false;
@@ -266,14 +151,12 @@ bool VS1053Ogg::write_register(uint8_t _reg, uint16_t _value,
   return true;
 }
 
-void VS1053Ogg::wram_write(uint16_t address, uint16_t data)
-{
+void VS1053Ogg::wram_write(uint16_t address, uint16_t data) {
   write_register(SCI_WRAMADDR, address);
   write_register(SCI_WRAM, data);
 }
 
-uint16_t VS1053Ogg::wram_read(uint16_t address)
-{
+uint16_t VS1053Ogg::wram_read(uint16_t address) {
   write_register(SCI_WRAMADDR, address); // Start reading from WRAM
   return read_register(SCI_WRAM);        // Read back result
 }
@@ -284,8 +167,7 @@ int VS1053Ogg::getRecordingTime() // Read recording time
   return wram_read(0x9) << 16 | wram_read(0x8);
 }
 
-bool VS1053Ogg::testComm(const char *header)
-{
+bool VS1053Ogg::testComm(const char *header) {
   // Test the communication with the VS1053 module.  The result wille be
   // returned. If DREQ is low, there is problably no VS1053 connected.  Pull the
   // line HIGH in order to prevent an endless loop waiting for this signal.  The
@@ -294,8 +176,7 @@ bool VS1053Ogg::testComm(const char *header)
   uint16_t r1, r2, cnt = 0;
   uint16_t delta = 300; // 3 for fast SPI
 
-  if (!digitalRead(dreq_pin))
-  {
+  if (!digitalRead(dreq_pin)) {
     dbgprint("VS1053 not properly installed!");
     // Allow testing without the VS1053 module
     pinMode(dreq_pin, INPUT_PULLUP); // DREQ is now input with pull-up
@@ -305,13 +186,11 @@ bool VS1053Ogg::testComm(const char *header)
   // We will use the volume setting for this.
   // Will give warnings on serial output if DEBUG is active.
   // A maximum of 20 errors will be reported.
-  if (strstr(header, "Fast"))
-  {
+  if (strstr(header, "Fast")) {
     delta = 3; // Fast SPI, more loops
   }
   dbgprint(header); // Show a header
-  for (i = 0; (i < 0xFFFF) && (cnt < 20); i += delta)
-  {
+  for (i = 0; (i < 0xFFFF) && (cnt < 20); i += delta) {
     write_register(SCI_VOL, i);         // Write data to SCI_VOL
     r1 = read_register(SCI_VOL);        // Read back for the first time
     r2 = read_register(SCI_VOL);        // Read back a second time
@@ -326,15 +205,12 @@ bool VS1053Ogg::testComm(const char *header)
   return (cnt == 0); // Return the result
 }
 
-bool VS1053Ogg::active()
-{
+bool VS1053Ogg::active() {
   return activeflag; // Get active state
 }
 
-void VS1053Ogg::activate()
-{
-  for (int i = 0; i < 2; i++)
-  {
+void VS1053Ogg::activate() {
+  for (int i = 0; i < 2; i++) {
     dbgprint("Starting conversion");
     if (write_register(SCI_AIADDR, plg_sa,
                        200)) // Activate recording, timeout 200 msec
@@ -350,8 +226,7 @@ void VS1053Ogg::activate()
   }
 }
 
-void VS1053Ogg::begin()
-{
+void VS1053Ogg::begin() {
   pinMode(dreq_pin, INPUT); // DREQ is an input
   pinMode(cs_pin, OUTPUT);  // The SCI and SDI signals
   pinMode(dcs_pin, OUTPUT);
@@ -389,8 +264,7 @@ void VS1053Ogg::begin()
   dbgprint("Loading Ogg plugin");
   plg_sa = SpiLoadImage("/v44k1q05.img");     // Load profile
   dbgprint("Result of load is 0x%X", plg_sa); // Should be 0x34
-  if (plg_sa != 0x34)
-  {
+  if (plg_sa != 0x34) {
     dbgprint("ERROR: Result of should be is 0x34");
     delay(4000);
     ESP.restart();
@@ -407,27 +281,23 @@ void VS1053Ogg::begin()
   delay(100);
 }
 
-void VS1053Ogg::softReset()
-{
+void VS1053Ogg::softReset() {
   write_register(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
   delay(10);
   await_data_request();
 }
 
-void VS1053Ogg::printDetails(const char *header)
-{
+void VS1053Ogg::printDetails(const char *header) {
   uint16_t regbuf[16];
   uint8_t i;
 
   dbgprint(header);
   dbgprint("REG   Contents");
   dbgprint("---   -----");
-  for (i = 0; i <= SCI_num_registers; i++)
-  {
+  for (i = 0; i <= SCI_num_registers; i++) {
     regbuf[i] = read_register(i);
   }
-  for (i = 0; i <= SCI_num_registers; i++)
-  {
+  for (i = 0; i <= SCI_num_registers; i++) {
     delay(5);
     dbgprint("%3X - %5X", i, regbuf[i]);
   }
@@ -453,8 +323,7 @@ void VS1053Ogg::printDetails(const char *header)
 //  Dx: Data. Read this two bytes at a time and send to VS1053 in a
 //  big-endian fashion, as shown in the code below.
 
-uint16_t VS1053Ogg::SpiLoadImage(String imgfile)
-{
+uint16_t VS1053Ogg::SpiLoadImage(String imgfile) {
   File fp;
   uint16_t type;
   static uint16_t offsets[3] = {0x8000U, 0x0U, 0x4000U};
@@ -462,21 +331,17 @@ uint16_t VS1053Ogg::SpiLoadImage(String imgfile)
   uint16_t numerr = 0; // Number of errors
 
   fp = SPIFFS.open(imgfile, "r");
-  if (fp)
-  {
-    if (fp.read() != 'P' || fp.read() != '&' || fp.read() != 'H')
-    {
+  if (fp) {
+    if (fp.read() != 'P' || fp.read() != '&' || fp.read() != 'H') {
       fp.close();
       return 0xFFFF;
     }
   }
-  while ((type = fp.read()) >= 0)
-  {
+  while ((type = fp.read()) >= 0) {
     //  offsets are: Code (I), X Mem, Y Mem when written through SCI_WRAM.
     //  See VS1053 datasheet's documentation for SCI register SCI_WRAMADDR for
     //  details.
-    if (type >= 4)
-    {
+    if (type >= 4) {
       fp.close();
       return 0xFFFF; // Error return
     }
@@ -484,22 +349,18 @@ uint16_t VS1053Ogg::SpiLoadImage(String imgfile)
     len |= fp.read() & ~1;
     addr = (uint16_t)fp.read() << 8;
     addr |= fp.read();
-    if (type == 3)
-    {
+    if (type == 3) {
       fp.close();
       return addr; // Execute record: we can now return with the execute address
     }
     // Set address
     write_register(SCI_WRAMADDR, addr + offsets[type], 10);
     // Write data
-    do
-    {
+    do {
       data = (uint16_t)fp.read() << 8;
       data |= fp.read();
-      if (!write_register(SCI_WRAM, data, 10))
-      {
-        if (numerr++ > 10)
-        {
+      if (!write_register(SCI_WRAM, data, 10)) {
+        if (numerr++ > 10) {
           fp.close();
           return 0xFFFF;
         }
@@ -511,8 +372,7 @@ uint16_t VS1053Ogg::SpiLoadImage(String imgfile)
 }
 
 // VS1053b flac + latm patch
-void VS1053Ogg::LoadUserCode(String cmdfile)
-{
+void VS1053Ogg::LoadUserCode(String cmdfile) {
   File fp;             // File object
   String line;         // Line from file
   uint8_t reg;         // Register to write
@@ -521,27 +381,22 @@ void VS1053Ogg::LoadUserCode(String cmdfile)
   int progress = 0;    // To show progress
 
   fp = SPIFFS.open(cmdfile, "r");
-  if (!fp)
-  {
+  if (!fp) {
     dbgprint("File open failed");
     return;
   }
-  while (fp.available())
-  {
+  while (fp.available()) {
     line = fp.readStringUntil('\n'); // Read next line
     if (line.startsWith("W 2 "))     // Serious line?
     {
       reg = atoi(line.substring(4).c_str());
       data = atoi(line.substring(6).c_str());
-      if ((++progress % 100) == 0)
-      {
+      if ((++progress % 100) == 0) {
         dbgprint("%d words patched", progress);
         dbgprint("Writing reg %02X with %04X", reg, data);
       }
-      if (!write_register(reg, data, 10))
-      {
-        if (numerr++ > 10)
-        {
+      if (!write_register(reg, data, 10)) {
+        if (numerr++ > 10) {
           break;
         }
       }
@@ -564,8 +419,7 @@ VS1053Ogg ogg(VS1053_CS, VS1053_DCS, VS1053_DREQ, VS1053_RESET);
 // BEDUg flag.* Print only if DEBUG flag is true.  Always returns the the
 // formatted string.             *
 //******************************************************************************************
-char *dbgprint(const char *format, ...)
-{
+char *dbgprint(const char *format, ...) {
   static char sbuf[DEBUG_BUFFER_SIZE]; // For debug lines
   va_list varArgs;                     // For variable number of params
 
@@ -585,6 +439,7 @@ char *dbgprint(const char *format, ...)
 //******************************************************************************************
 // Read the encryption type of the network and return as a 4 byte name *
 //*********************4********************************************************************
+/*
 const char *getEncryptionType(int thisType)
 {
   switch (thisType)
@@ -673,8 +528,8 @@ void connectwifi()
   pw.trim();                                 // Remove CR
   WiFi.begin(ssid.c_str(), pw.c_str());      // Connect to selected SSID
   sprintf(sbuf, "Try WiFi %s",
-          ssid.c_str());                           // Message to show during WiFi connect
-  if (WiFi.waitForConnectResult() != WL_CONNECTED) // Try to connect
+          ssid.c_str());                           // Message to show during
+WiFi connect if (WiFi.waitForConnectResult() != WL_CONNECTED) // Try to connect
   {
     dbgprint("WiFi Failed!");
     return;
@@ -729,7 +584,6 @@ void timer10()
 //******************************************************************************************
 // Setup for the program. *
 //******************************************************************************************
-/*
 void setup() {
   FSInfo fs_info;  // Info about SPIFFS
   Dir dir;         // Directory struct for SPIFFS
@@ -779,11 +633,11 @@ void setup() {
   tckr.attach(10.0, timer10); // Start timer10 every 10 sec
   dbgprint("Waiting for telnet connection, exit with ^] and 'quit'...");
 }
-*/
+
 //******************************************************************************************
 //                                   L O O P *
 //******************************************************************************************
-//                                                                                         *
+// *
 //******************************************************************************************
 /*
 void loop() {

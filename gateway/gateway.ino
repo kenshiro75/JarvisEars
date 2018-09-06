@@ -30,8 +30,6 @@
 //
 **********************************************************************************/
 
-#include <VS1053.h>
-
 #define SERIAL_BAUD 115200
 #define SERIAL_DEBUG 2
 
@@ -52,7 +50,8 @@ const uint32_t PROGMEM MQTT_BROKERPORT = 1883;
 // vvvvvvvvv Global Configuration vvvvvvvvvvv
 #include <EEPROM.h>
 
-struct _GLOBAL_CONFIG {
+struct _GLOBAL_CONFIG
+{
   uint32_t checksum;
   char apname[32];
   char mqttbroker[32];
@@ -77,14 +76,20 @@ struct _GLOBAL_CONFIG *pGC;
 #include <ESP8266WebServer.h>
 #include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
 
-void configModeCallback(WiFiManager *myWiFiManager) {
+/******** VS1053 ***********/
+#include "encoder.h"
+/***************************/
+
+void configModeCallback(WiFiManager *myWiFiManager)
+{
   Serial.println("Entered config mode");
   Serial.println(WiFi.softAPIP());
   // if you used auto generated SSID, print it
   Serial.println(myWiFiManager->getConfigPortalSSID());
 }
 
-void wifi_setup(void) {
+void wifi_setup(void)
+{
   // WiFiManager
   // Local intialization. Once its business is done, there is no need to keep it
   // around
@@ -100,7 +105,8 @@ void wifi_setup(void) {
   // if it does not connect it starts an access point with the specified name
   // here  "AutoConnectAP"
   // and goes into a blocking loop awaiting configuration
-  if (!wifiManager.autoConnect(pGC->apname)) {
+  if (!wifiManager.autoConnect(pGC->apname))
+  {
     Serial.println("failed to connect and hit timeout");
     // reset and try again, or maybe put it to deep sleep
     ESP.reset();
@@ -113,21 +119,25 @@ void wifi_setup(void) {
 // ^^^^^^^^^ ESP8266 WiFi ^^^^^^^^^^^
 
 // vvvvvvvvv Global Configuration vvvvvvvvvvv
-uint32_t gc_checksum() {
+uint32_t gc_checksum()
+{
   uint8_t *p = (uint8_t *)pGC;
   uint32_t checksum = 0;
   p += sizeof(pGC->checksum);
-  for (size_t i = 0; i < (sizeof(*pGC) - 4); i++) {
+  for (size_t i = 0; i < (sizeof(*pGC) - 4); i++)
+  {
     checksum += *p++;
   }
   return checksum;
 }
 
-void eeprom_setup() {
+void eeprom_setup()
+{
   EEPROM.begin(4096);
   pGC = (struct _GLOBAL_CONFIG *)EEPROM.getDataPtr();
   // if checksum bad init GC else use GC values
-  if (gc_checksum() != pGC->checksum) {
+  if (gc_checksum() != pGC->checksum)
+  {
     Serial.println("Factory reset");
     memset(pGC, 0, sizeof(*pGC));
     strcpy_P(pGC->encryptkey, ENCRYPTKEY);
@@ -151,15 +161,19 @@ void eeprom_setup() {
 // URL: http://Jarvisgw.local
 MDNSResponder mdns;
 
-void mdns_setup(void) {
+void mdns_setup(void)
+{
   if (pGC->mdnsname[0] == '\0')
     return;
 
-  if (mdns.begin(pGC->mdnsname, WiFi.localIP())) {
+  if (mdns.begin(pGC->mdnsname, WiFi.localIP()))
+  {
     Serial.println("MDNS responder started");
     mdns.addService("http", "tcp", 80);
     mdns.addService("ws", "tcp", 81);
-  } else {
+  }
+  else
+  {
     Serial.println("MDNS.begin failed");
   }
   Serial.printf("Connect to http://%s.local or http://", pGC->mdnsname);
@@ -294,19 +308,23 @@ static const char PROGMEM CONFIGUREGWMQTT_HTML[] = R"rawliteral(
 ESP8266WebServer webServer(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
 
-void webSocketEvent(uint8_t num, int type, uint8_t *payload, size_t length) {
+void webSocketEvent(uint8_t num, int type, uint8_t *payload, size_t length)
+{
   Serial.printf("webSocketEvent(%d, %d, ...)\r\n", num, type);
-  switch (type) {
+  switch (type)
+  {
   case WStype_DISCONNECTED:
     Serial.printf("[%u] Disconnected!\r\n", num);
     break;
-  case WStype_CONNECTED: {
+  case WStype_CONNECTED:
+  {
     IPAddress ip = webSocket.remoteIP(num);
     Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\r\n", num, ip[0],
                   ip[1], ip[2], ip[3], payload);
     // Send the RFM69 radio configuration one time after connection
     // webSocket.sendTXT(num, RadioConfig, strlen(RadioConfig));
-  } break;
+  }
+  break;
   case WStype_TEXT:
     Serial.printf("[%u] get Text: %s\r\n", num, payload);
 
@@ -326,14 +344,16 @@ void webSocketEvent(uint8_t num, int type, uint8_t *payload, size_t length) {
   }
 }
 
-void handleRoot() {
+void handleRoot()
+{
   Serial.print("Free heap=");
   Serial.println(ESP.getFreeHeap());
 
   webServer.send_P(200, "text/html", INDEX_HTML);
 }
 
-void handleNotFound() {
+void handleNotFound()
+{
   String message = "File Not Found\n\n";
   message += "URI: ";
   message += webServer.uri();
@@ -342,28 +362,33 @@ void handleNotFound() {
   message += "\nArguments: ";
   message += webServer.args();
   message += "\n";
-  for (uint8_t i = 0; i < webServer.args(); i++) {
+  for (uint8_t i = 0; i < webServer.args(); i++)
+  {
     message += " " + webServer.argName(i) + ": " + webServer.arg(i) + "\n";
   }
   webServer.send(404, "text/plain", message);
 }
 
-void handleconfiguregw() {
+void handleconfiguregw()
+{
   webServer.send_P(200, "text/html", CONFIGUREGW_HTML);
 }
 
 // Reset global config back to factory defaults
-void handleconfiguregwreset() {
+void handleconfiguregwreset()
+{
   pGC->checksum++;
   EEPROM.commit();
   ESP.reset();
   delay(1000);
 }
 
-void handleconfiguregwmqtt() {
+void handleconfiguregwmqtt()
+{
   size_t formFinal_len = strlen_P(CONFIGUREGWMQTT_HTML) + sizeof(*pGC);
   char *formFinal = (char *)malloc(formFinal_len);
-  if (formFinal == NULL) {
+  if (formFinal == NULL)
+  {
   }
   snprintf_P(formFinal, formFinal_len, CONFIGUREGWMQTT_HTML, pGC->mqttbroker,
              pGC->mqttclientname, pGC->mdnsname);
@@ -371,38 +396,49 @@ void handleconfiguregwmqtt() {
   free(formFinal);
 }
 
-void handleconfiguregwmqttWrite() {
+void handleconfiguregwmqttWrite()
+{
   bool commit_required = false;
   String argi, argNamei;
 
-  for (uint8_t i = 0; i < webServer.args(); i++) {
+  for (uint8_t i = 0; i < webServer.args(); i++)
+  {
     Serial.print(webServer.argName(i));
     Serial.print('=');
     Serial.println(webServer.arg(i));
     argi = webServer.arg(i);
     argNamei = webServer.argName(i);
-    if (argNamei == "mqttbroker") {
+    if (argNamei == "mqttbroker")
+    {
       const char *broker = argi.c_str();
-      if (strcmp(broker, pGC->mqttbroker) != 0) {
+      if (strcmp(broker, pGC->mqttbroker) != 0)
+      {
         commit_required = true;
         strcpy(pGC->mqttbroker, broker);
       }
-    } else if (argNamei == "mqttclientname") {
+    }
+    else if (argNamei == "mqttclientname")
+    {
       const char *client = argi.c_str();
-      if (strcmp(client, pGC->mqttclientname) != 0) {
+      if (strcmp(client, pGC->mqttclientname) != 0)
+      {
         commit_required = true;
         strcpy(pGC->mqttclientname, client);
       }
-    } else if (argNamei == "mdnsname") {
+    }
+    else if (argNamei == "mdnsname")
+    {
       const char *mdns = argi.c_str();
-      if (strcmp(mdns, pGC->mdnsname) != 0) {
+      if (strcmp(mdns, pGC->mdnsname) != 0)
+      {
         commit_required = true;
         strcpy(pGC->mdnsname, mdns);
       }
     }
   }
   handleRoot();
-  if (commit_required) {
+  if (commit_required)
+  {
     pGC->checksum = gc_checksum();
     EEPROM.commit();
     ESP.reset();
@@ -410,7 +446,8 @@ void handleconfiguregwmqttWrite() {
   }
 }
 
-void websock_setup(void) {
+void websock_setup(void)
+{
   webServer.on("/", handleRoot);
   webServer.on("/configGW", HTTP_GET, handleconfiguregw);
   webServer.on("/configGWmqtt", HTTP_GET, handleconfiguregwmqtt);
@@ -427,7 +464,8 @@ void websock_setup(void) {
 #include "ESP8266HTTPUpdateServer.h"
 ESP8266HTTPUpdateServer httpUpdater;
 
-void ota_setup() {
+void ota_setup()
+{
   httpUpdater.setup(&webServer, "/updater", "admin", "Jarvisgw");
 }
 
@@ -455,7 +493,8 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message);
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
 
-void callback(char *topic, byte *payload, unsigned int length) {
+void callback(char *topic, byte *payload, unsigned int length)
+{
 
   char *p = NULL;
   char szPayload[255];
@@ -467,7 +506,8 @@ void callback(char *topic, byte *payload, unsigned int length) {
   Serial.print("[info][");
   Serial.print(topic);
   Serial.print("] ");
-  for (unsigned int i = 0; i < length; i++, p++) {
+  for (unsigned int i = 0; i < length; i++, p++)
+  {
     *p = (char)payload[i];
   }
   *p = 0;
@@ -479,7 +519,8 @@ void callback(char *topic, byte *payload, unsigned int length) {
   Serial.println();
 }
 
-void mqtt_setup() {
+void mqtt_setup()
+{
 
   Serial.print("MQTT broker IP: ");
   Serial.print(pGC->mqttbroker);
@@ -491,16 +532,19 @@ void mqtt_setup() {
   mqttClient.setCallback(callback);
 }
 
-void reconnect() {
+void reconnect()
+{
   // static const char PROGMEM RFMOUT_TOPIC[] = "rfmOut/%d/#";
   static const char PROGMEM RFMOUT_TOPIC[] = "%s/%d/#";
   char sub_topic[32];
 
   // Loop until we're reconnected
-  while (!mqttClient.connected()) {
+  while (!mqttClient.connected())
+  {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (mqttClient.connect(WiFi.hostname().c_str())) {
+    if (mqttClient.connect(WiFi.hostname().c_str()))
+    {
 
       char szGatewayTopic[32];
       szGatewayTopic[0] = 0;
@@ -529,7 +573,9 @@ void reconnect() {
       mqttClient.publish(szGatewayTopic, szGatewayTopicWelcomeMex);
       Serial.printf("subscribe topic [%s]\r\n", szGatewayTopic);
 */
-    } else {
+    }
+    else
+    {
       Serial.print("failed, rc=");
       Serial.print(mqttClient.state());
       Serial.println(" try again in 2 seconds");
@@ -539,8 +585,10 @@ void reconnect() {
   }
 }
 
-void mqtt_loop() {
-  if (!mqttClient.connected()) {
+void mqtt_loop()
+{
+  if (!mqttClient.connected())
+  {
     reconnect();
   }
   mqttClient.loop();
@@ -548,7 +596,8 @@ void mqtt_loop() {
 
 // ^^^^^^^^^ MQTT ^^^^^^^^^^^
 
-struct _nodestats {
+struct _nodestats
+{
   unsigned long recvMessageCount;
   unsigned long recvMessageMissing;
   unsigned long recvMessageDuplicate;
@@ -558,10 +607,13 @@ struct _nodestats {
 typedef struct _nodestats nodestats_t;
 nodestats_t *nodestats[256]; // index by node ID
 
-struct _nodestats *get_nodestats(uint8_t nodeID) {
-  if (nodestats[nodeID] == NULL) {
+struct _nodestats *get_nodestats(uint8_t nodeID)
+{
+  if (nodestats[nodeID] == NULL)
+  {
     nodestats[nodeID] = (nodestats_t *)malloc(sizeof(nodestats_t));
-    if (nodestats[nodeID] == NULL) {
+    if (nodestats[nodeID] == NULL)
+    {
       Serial.println("\n\n*** nodestats malloc() failed ***\n");
       return NULL;
     }
@@ -570,10 +622,12 @@ struct _nodestats *get_nodestats(uint8_t nodeID) {
   return nodestats[nodeID];
 }
 
-void updateClients(uint8_t senderId, int32_t rssi, const char *message) {
+void updateClients(uint8_t senderId, int32_t rssi, const char *message)
+{
   nodestats_t *ns;
   ns = get_nodestats(senderId);
-  if (ns == NULL) {
+  if (ns == NULL)
+  {
     Serial.println("\n\n*** updatedClients failed ***");
     return;
   }
@@ -587,21 +641,30 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message) {
   ns->recvMessageCount++;
   // Serial.printf("nms %lu rmc %lu rms %lu\r\n",
   //    newMessageSequence, ns->recvMessageCount, ns->recvMessageSequence);
-  if (ns->recvMessageCount != 1) {
+  if (ns->recvMessageCount != 1)
+  {
     // newMessageSequence == 0 means the sender just start up.
     // Or the counter wrapped. But the counter is uint32_t so
     // that will take a very long time.
-    if (newMessageSequence != 0) {
-      if (newMessageSequence == ns->recvMessageSequence) {
+    if (newMessageSequence != 0)
+    {
+      if (newMessageSequence == ns->recvMessageSequence)
+      {
         ns->recvMessageDuplicate++;
-      } else {
-        if (newMessageSequence > ns->recvMessageSequence) {
+      }
+      else
+      {
+        if (newMessageSequence > ns->recvMessageSequence)
+        {
           sequenceChange = newMessageSequence - ns->recvMessageSequence;
-        } else {
+        }
+        else
+        {
           sequenceChange =
               0xFFFFFFFFUL - (ns->recvMessageSequence - newMessageSequence);
         }
-        if (sequenceChange > 1) {
+        if (sequenceChange > 1)
+        {
           ns->recvMessageMissing += sequenceChange - 1;
         }
       }
@@ -624,10 +687,12 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message) {
   size_t len = snprintf_P(payload, sizeof(payload), JSONtemplate,
                           ns->recvMessageCount, ns->recvMessageMissing,
                           ns->recvMessageDuplicate, senderId, rssi, message);
-  if (len >= sizeof(payload)) {
+  if (len >= sizeof(payload))
+  {
     Serial.println("\n\n*** RFM69 packet truncated ***");
   }
-  if (len < 0) {
+  if (len < 0)
+  {
     Serial.println("[error] problem in parsing RFM69 message");
   }
   // send received message to all connected web clients
@@ -637,19 +702,23 @@ void updateClients(uint8_t senderId, int32_t rssi, const char *message) {
   // len = snprintf(topic, sizeof(topic), "rfmIn/%d/%d", NETWORKID, senderId);
   len = snprintf(topic, sizeof(topic), "%s/%d/%d/tx", szApplication, NETWORKID,
                  senderId);
-  if (len >= sizeof(topic)) {
+  if (len >= sizeof(topic))
+  {
     Serial.println("\n\n*** MQTT topic truncated ***");
   }
-  if ((strlen(payload) + 1 + strlen(topic) + 1) > MQTT_MAX_PACKET_SIZE) {
+  if ((strlen(payload) + 1 + strlen(topic) + 1) > MQTT_MAX_PACKET_SIZE)
+  {
     Serial.println("\n\n*** MQTT message too long! ***");
   }
   Serial.printf("[info] topic:%s - message:%s \r\n", topic, payload);
-  if (!mqttClient.publish(topic, payload)) {
+  if (!mqttClient.publish(topic, payload))
+  {
     Serial.println("\n\n*** mqtt publish failed ***");
   }
 }
 
-void setup() {
+void setup()
+{
   Serial.begin(SERIAL_BAUD);
   Serial.println("\Jarvis WiFi Gateway");
 
@@ -668,7 +737,8 @@ void setup() {
   websock_setup();
 }
 
-void loop() {
+void loop()
+{
 
   mqtt_loop();
   webSocket.loop();
